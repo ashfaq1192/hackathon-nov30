@@ -25,7 +25,7 @@ qdrant_client = QdrantClient(
     url=os.getenv("QDRANT_URL"),
     api_key=os.getenv("QDRANT_API_KEY"),
 ) 
-COLLECTION_NAME = "my_documents" # This must match the collection name in main.py
+COLLECTION_NAME = "docusaurus_docs" # This must match the collection name in main.py
 
 async def get_embeddings(text: str):
     try:
@@ -124,7 +124,7 @@ async def index_documents(documents: list[dict]):
 
 
 if __name__ == "__main__":
-    DOCS_DIR = os.path.join(os.getcwd(), "..", "book-app", "docs")
+    DOCS_DIR = os.path.join(os.getcwd(), "book-app", "docs")
     if os.path.exists(DOCS_DIR):
         docs = load_documents(DOCS_DIR)
         print(f"Loaded {len(docs)} documents.")
