@@ -1,15 +1,32 @@
 import os
+from fastapi import FastAPI, HTTPException, status, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from openai import AsyncOpenAI, APIConnectionError, RateLimitError
+from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
+from qdrant_client import QdrantClient, models
+from qdrant_client.http.exceptions import UnexpectedResponse
 from dotenv import load_dotenv
+
 # Load env vars first
 load_dotenv()
 
-from fastapi import FastAPI, HTTPException, status
-from openai import AsyncOpenAI, APIConnectionError, RateLimitError
-from pydantic import BaseModel
-from qdrant_client import QdrantClient, models
-from qdrant_client.http.exceptions import UnexpectedResponse
-
 app = FastAPI()
+
+# Mount static files for the chat interface
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="rag-backend/templates")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # 1. Setup OpenAI (Gemini) Client
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
@@ -36,10 +53,11 @@ qdrant_client = QdrantClient(
     api_key=QDRANT_API_KEY,
 )
 
-COLLECTION_NAME = "my_documents"
+COLLECTION_NAME = "docusaurus_docs"
 
 class ChatRequest(BaseModel):
     message: str
+    skillLevel: str = "Beginner" # Default to Beginner if not provided
 
 async def get_embeddings(text: str):
     try:
@@ -56,24 +74,24 @@ async def get_embeddings(text: str):
             detail=f"Embedding error: {str(e)}"
         )
 
-@app.get("/")
-async def read_root():
-    return {"message": "RAG Backend Server is running!"}
+@app.get("/", response_class=HTMLResponse)
+async def read_root(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
 @app.post("/chat")
 async def chat(request: ChatRequest):
-    print(f"📩 Query: {request.message}")
+    print(f"Query: {request.message}")
+    print(f"Skill Level: {request.skillLevel}")
     
     # 1. Generate Embedding
     query_embedding = await get_embeddings(request.message)
 
     try:
         # 2. Search Qdrant
-        search_result = qdrant_client.search(
-            collection_name=COLLECTION_NAME,
-            query_vector=query_embedding,
-            limit=3
-        )
+        search_result = await run_in_threadpool(qdrant_client.search,
+                                                collection_name=COLLECTION_NAME,
+                                                query_vector=query_embedding,
+                                                limit=3)
         
         # Extract text from the payload
         context_docs = [hit.payload["text"] for hit in search_result if hit.payload]
@@ -93,20 +111,47 @@ async def chat(request: ChatRequest):
 
     # 3. Generate Answer
     try:
+        base_system_message = "You are a helpful expert teacher for a Robotics course."
+
+        skill_level_instructions = ""
+        if request.skillLevel == "Beginner":
+            skill_level_instructions = "Explain concepts in a simple and clear manner, avoiding jargon. Provide basic definitions and step-by-step explanations."
+        elif request.skillLevel == "Intermediate":
+            skill_level_instructions = "Explain concepts with moderate detail, using some technical terms but clarifying them. Provide practical examples."
+        elif request.skillLevel == "Advanced":
+            skill_level_instructions = "Explain concepts with high technical detail and assume familiarity with advanced terminology. Focus on nuances and complex interactions."
+
+        system_prompt_suffix = ""
+        user_prompt_content = ""
+
+        if not context_docs:
+            print("⚠️ No relevant context found in Qdrant. Providing a general, skill-level-appropriate introduction.")
+            if request.skillLevel == "Beginner":
+                system_prompt_suffix = f" {skill_level_instructions} Since no specific context was found, provide a warm welcome to the Robotics course and ask what foundational concepts or general topics in Physical AI the user is curious about."
+            elif request.skillLevel == "Intermediate":
+                system_prompt_suffix = f" {skill_level_instructions} Since no specific context was found, offer an engaging welcome to Module 4, mentioning key aspects like VLA models, and invite the user to explore specific technologies or project challenges within the module."
+            elif request.skillLevel == "Advanced":
+                system_prompt_suffix = f" {skill_level_instructions} Since no specific context was found, provide a concise, high-level overview of the Capstone Project and invite the user to delve into advanced research questions, architectural design choices, or complex implementation details."
+            else: # Fallback
+                system_prompt_suffix = f" {skill_level_instructions} Since no specific context was found, provide a general welcome related to the course/module, and ask what the user would like to learn about. Do NOT mention that no context was found."
+            user_prompt_content = f"The user said: {request.message}"
+        else:
+            system_prompt_suffix = f" {skill_level_instructions} Answer the user's question clearly based ONLY on the provided context below. If the answer isn't in the context, say so."
+            user_prompt_content = f"Context:\n{context_text}\n\nQuestion: {request.message}"
+
         response = await openai_client.chat.completions.create(
             model="gemini-2.5-flash", # Use the fast, free model
             messages=[
                 {
-                    "role": "system", 
-                    "content": "You are a helpful expert teacher for a Robotics course. Answer the user's question clearly based ONLY on the provided context below. If the answer isn't in the context, say so."
+                    "role": "system",
+                    "content": f"{base_system_message} {system_prompt_suffix}"
                 },
                 {
-                    "role": "user", 
-                    "content": f"Context:\n{context_text}\n\nQuestion: {request.message}"
+                    "role": "user",
+                    "content": user_prompt_content
                 }
             ]
         )
-        
         answer = response.choices[0].message.content
         return {"response": answer}
 
