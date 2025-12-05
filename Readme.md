@@ -1,4 +1,4 @@
-# Physical AI Book
+# Project : Physical AI & Humanoid Robotics TextBook
 
 ## Introduction
 This project is an open-source educational resource designed to introduce users to the exciting field of Physical AI. It covers fundamental concepts, practical applications, and advanced topics related to robotics, digital twins, and vision-language-action (VLA) models. The book is structured into modules, each focusing on a specific aspect of Physical AI, from foundational robotics concepts to cutting-edge AI integration. This entire project was accomplished using Spec-Driven Development (SDD), leveraging the Speck-kit Plus framework and the Claude Code CLI tool, powered by the Gemini API.
@@ -22,14 +22,8 @@ Upon completing this project, users will be able to:
 
 ## Skills and Tools Used and Learned
 - **Claude Code (with Gemini API Key):** The interactive CLI tool used for project development and task execution.
+- **Quadrant Vector Database:** The platform used for RAG purpose (Facilitates in live interaction with contents of the book
 - **Speck-kit Plus:** The framework used for Spec-Driven Development.
-- **Robotics Operating System (ROS 2):** For inter-process communication and robot control.
-- **URDF (Unified Robot Description Format):** For robot modeling.
-- **Gazebo:** For physics-based robot simulation.
-- **Unity:** For high-fidelity 3D rendering and visualization.
-- **NVIDIA Isaac Sim:** For advanced robotics simulation, synthetic data generation, and reinforcement learning.
-- **OpenAI Whisper:** For voice-to-action command processing.
-- **Large Language Models (LLMs):** For cognitive planning and natural language understanding in robotics.
 - **Git/GitHub:** For version control and collaboration.
 - **Markdown:** For documentation and content creation.
 
@@ -48,8 +42,8 @@ Before you begin, ensure you have the following installed:
 First, clone the project repository from GitHub:
 
 ```bash
-git clone https://github.com/your-username/physical-ai-book.git
-cd physical-ai-book
+git clone https://github.com/ashfaq1192/hackathon-nov30.git
+cd hackathon-nov30
 ```
 
 ### 2. Install Docusaurus Dependencies
