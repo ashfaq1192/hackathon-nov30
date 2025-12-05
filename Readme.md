@@ -110,4 +110,4 @@ docker pull qdrant/qdrant
 docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant
 ```
 
-This `Readme.md` provides a comprehensive guide for anyone to understand, set up, and run the Physical AI Book project.
+This `Readme.md` provides a comprehensive guide for anyone to understand, set up, and run the Physical AI & Humanoid Robotics Textbook Project.
