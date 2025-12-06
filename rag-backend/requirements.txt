@@ -1,5 +1,9 @@
 fastapi
 uvicorn
+gunicorn
+pydantic
+python-dotenv
 openai
 qdrant-client
-python-dotenv
+jinja2
+python-multipart
