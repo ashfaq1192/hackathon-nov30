@@ -60,15 +60,17 @@ class ChatRequest(BaseModel):
     skillLevel: str = "Beginner" # Default to Beginner if not provided
 
 async def get_embeddings(text: str):
+    print(f"DEBUG: Generating embedding for text: {text[:50]}...")
     try:
         response = await openai_client.embeddings.create(
             model="text-embedding-004",
             input=text,
             dimensions=768 # Force 768 to match Qdrant config
         )
+        print("DEBUG: Embedding generated successfully.")
         return response.data[0].embedding
     except Exception as e:
-        print(f"Error generating embedding: {e}")
+        print(f"ERROR: Error generating embedding: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Embedding error: {str(e)}"
@@ -82,34 +84,41 @@ async def read_root(request: Request):
 async def chat(request: ChatRequest):
     print(f"Query: {request.message}")
     print(f"Skill Level: {request.skillLevel}")
-    
+
     # 1. Generate Embedding
+    print("DEBUG: Calling get_embeddings...")
     query_embedding = await get_embeddings(request.message)
+    print("DEBUG: get_embeddings call completed.")
 
     try:
         # 2. Search Qdrant
+        print("DEBUG: Searching Qdrant...")
         search_result = await run_in_threadpool(qdrant_client.search,
                                                 collection_name=COLLECTION_NAME,
                                                 query_vector=query_embedding,
                                                 limit=3)
-        
+        print("DEBUG: Qdrant search completed.")
+
         # Extract text from the payload
         context_docs = [hit.payload["text"] for hit in search_result if hit.payload]
-        
+
         if not context_docs:
-            print("⚠️ No relevant context found in Qdrant.")
+            print("⚠️ No relevant context found in Qdrant. Providing a general, skill-level-appropriate introduction.")
             context_text = "No specific context found in the textbook."
+            print(f"DEBUG: Context text (no docs): {context_text}")
         else:
             context_text = "\n\n".join(context_docs)
+            print(f"DEBUG: Context text (from Qdrant, first 200 chars): {context_text[:200]}...")
 
     except Exception as e:
-        print(f"🔥 Qdrant Error: {e}")
+        print(f"🔥 ERROR: Qdrant Error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Database error: {str(e)}"
         )
 
     # 3. Generate Answer
+    print("DEBUG: Generating answer with OpenAI (Gemini)...")
     try:
         base_system_message = "You are a helpful expert teacher for a Robotics course."
 
@@ -127,11 +136,11 @@ async def chat(request: ChatRequest):
         if not context_docs:
             print("⚠️ No relevant context found in Qdrant. Providing a general, skill-level-appropriate introduction.")
             if request.skillLevel == "Beginner":
-                system_prompt_suffix = f" {skill_level_instructions} Since no specific context was found, provide a warm welcome to the Robotics course and ask what foundational concepts or general topics in Physical AI the user is curious about."
+                system_prompt_suffix = f" {skill_level_instructions} Since no specific context was found, provide a warm welcome to the Robotics course and ask what foundational concepts or general topics from the textbook the user is curious about."
             elif request.skillLevel == "Intermediate":
-                system_prompt_suffix = f" {skill_level_instructions} Since no specific context was found, offer an engaging welcome to Module 4, mentioning key aspects like VLA models, and invite the user to explore specific technologies or project challenges within the module."
+                system_prompt_suffix = f" {skill_level_instructions} Since no specific context was found, offer an engaging welcome to the course, mentioning key areas like VLA models, and invite the user to explore specific technologies or topics within the textbook."
             elif request.skillLevel == "Advanced":
-                system_prompt_suffix = f" {skill_level_instructions} Since no specific context was found, provide a concise, high-level overview of the Capstone Project and invite the user to delve into advanced research questions, architectural design choices, or complex implementation details."
+                system_prompt_suffix = f" {skill_level_instructions} Since no specific context was found, provide a concise, high-level overview of the advanced topics covered in this course and invite the user to delve into advanced research questions, architectural design choices, or complex implementation details."
             else: # Fallback
                 system_prompt_suffix = f" {skill_level_instructions} Since no specific context was found, provide a general welcome related to the course/module, and ask what the user would like to learn about. Do NOT mention that no context was found."
             user_prompt_content = f"The user said: {request.message}"
@@ -139,6 +148,8 @@ async def chat(request: ChatRequest):
             system_prompt_suffix = f" {skill_level_instructions} Answer the user's question clearly based ONLY on the provided context below. If the answer isn't in the context, say so."
             user_prompt_content = f"Context:\n{context_text}\n\nQuestion: {request.message}"
 
+        print(f"DEBUG: System prompt suffix: {system_prompt_suffix[:200]}...")
+        print(f"DEBUG: User prompt content: {user_prompt_content[:200]}...")
         response = await openai_client.chat.completions.create(
             model="gemini-2.5-flash", # Use the fast, free model
             messages=[
